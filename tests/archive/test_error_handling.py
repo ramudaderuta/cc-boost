@@ -201,8 +201,10 @@ class TestErrorHandling:
             side_effect=Exception("Streaming failed")
         )
 
-        with pytest.raises(Exception):
-            await boost_orchestrator.execute_with_boost(sample_claude_request, "test-request-id")
+        response = await boost_orchestrator.execute_with_boost(sample_claude_request, "test-request-id")
+
+        # Should return an error response after exhausting retries
+        assert "Error: Maximum retry attempts reached" in response.content[0].text
 
     @pytest.mark.asyncio
     async def test_boost_orchestrator_consecutive_failures(self, boost_orchestrator, sample_claude_request):
@@ -281,8 +283,11 @@ class TestErrorHandling:
 
         boost_orchestrator.boost_manager.close = AsyncMock()
 
-        with pytest.raises(Exception):
-            await boost_orchestrator.execute_with_boost(sample_claude_request, "test-request-id")
+        # Should handle error gracefully and return error response
+        response = await boost_orchestrator.execute_with_boost(sample_claude_request, "test-request-id")
+
+        # Verify error response
+        assert "Error: Maximum retry attempts reached" in response.content[0].text
 
         # Should still close boost manager
         boost_orchestrator.boost_manager.close.assert_called_once()

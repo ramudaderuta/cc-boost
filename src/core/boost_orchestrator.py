@@ -29,11 +29,19 @@ class BoostOrchestrator:
         Returns:
             Claude-format response
         """
+        # Validate request
+        if not claude_request or not hasattr(claude_request, 'model') or not claude_request.model:
+            return self._create_error_response("Invalid request: missing model", claude_request)
+
         logger.info(f"Starting boost execution for model: {claude_request.model}")
 
         # Convert to OpenAI format to extract tools
-        openai_request = convert_claude_to_openai(claude_request, model_manager)
-        tools = openai_request.get('tools', [])
+        try:
+            openai_request = convert_claude_to_openai(claude_request, model_manager)
+            tools = openai_request.get('tools', [])
+        except Exception as e:
+            logger.error(f"Failed to convert request: {e}")
+            return self._create_error_response(f"Request conversion failed: {str(e)}", claude_request)
 
         # Initialize loop state
         loop_state = LoopState()
@@ -46,12 +54,19 @@ class BoostOrchestrator:
                 logger.info(f"Boost loop iteration: {loop_state.loop_count}")
 
                 # Get guidance from boost model
-                response_type, analysis, guidance = await self.boost_manager.get_boost_guidance(
-                    user_request=user_request,
-                    tools=tools,
-                    loop_count=loop_state.loop_count,
-                    previous_attempts=loop_state.previous_attempts
-                )
+                try:
+                    response_type, analysis, guidance = await self.boost_manager.get_boost_guidance(
+                        user_request=user_request,
+                        tools=tools,
+                        loop_count=loop_state.loop_count,
+                        previous_attempts=loop_state.previous_attempts
+                    )
+                except Exception as e:
+                    logger.error(f"Boost model call failed: {e}")
+                    loop_state.add_attempt(f"Boost model error: {str(e)}")
+                    if not loop_state.increment_loop():
+                        return self._create_error_response("Maximum retry attempts reached", claude_request)
+                    continue
 
                 logger.info(f"Boost model response type: {response_type}")
 
@@ -86,14 +101,16 @@ class BoostOrchestrator:
                         logger.error(f"Auxiliary model execution failed: {e}")
                         loop_state.add_attempt(f"Auxiliary execution failed: {str(e)}")
                         if not loop_state.increment_loop():
-                            return self._create_error_response("Execution failed after multiple attempts", claude_request)
+                            # This will be the last iteration, let it exit naturally
+                            continue
 
                 else:  # OTHER
                     # Invalid response format, retry
                     logger.warning(f"Boost model returned invalid format, retrying...")
                     loop_state.add_attempt(f"Invalid response format: {analysis[:200]}...")
                     if not loop_state.increment_loop():
-                        return self._create_error_response("Boost model failed to provide valid guidance", claude_request)
+                        # This will be the last iteration, let it exit naturally
+                        continue
 
             # Max loops reached
             logger.warning(f"Max loops ({loop_state.max_loops}) reached")
@@ -114,18 +131,18 @@ class BoostOrchestrator:
                         text_parts = []
                         for block in message.content:
                             if hasattr(block, 'text') and block.text:
-                                text_parts.append(block.text)
-                        return ' '.join(text_parts)
+                                text_parts.append(block.text.strip())
+                        return ' '.join(part for part in text_parts if part).strip()
             elif isinstance(message, dict) and message.get('role') == 'user':
                 content = message.get('content', '')
                 if isinstance(content, str):
-                    return content
+                    return content.strip()
                 elif isinstance(content, list):
                     text_parts = []
                     for block in content:
                         if isinstance(block, dict) and block.get('type') == 'text':
-                            text_parts.append(block.get('text', ''))
-                    return ' '.join(text_parts)
+                            text_parts.append((block.get('text') or '').strip())
+                    return ' '.join(part for part in text_parts if part).strip()
 
         return "User request not found"
 
@@ -169,7 +186,7 @@ class BoostOrchestrator:
         from fastapi.responses import StreamingResponse
 
         # Create the streaming response
-        openai_stream = self.openai_client.create_chat_completion_stream(
+        openai_stream = await self.openai_client.create_chat_completion_stream(
             auxiliary_request, request_id
         )
 
@@ -240,12 +257,15 @@ class BoostOrchestrator:
         """Create an error response in Claude format"""
         from src.models.claude import ClaudeMessageResponse, ClaudeUsage, ClaudeContentBlockText
 
+        # Get model name from request or use default
+        model_name = getattr(original_request, 'model', None) or "unknown"
+
         response = ClaudeMessageResponse(
             id="error-" + str(hash(error_message) % 1000000),
             type="message",
             role="assistant",
             content=[ClaudeContentBlockText(type="text", text=f"Error: {error_message}")],
-            model=original_request.model,
+            model=model_name,
             stop_reason="end_turn",
             stop_sequence=None,
             usage=ClaudeUsage(

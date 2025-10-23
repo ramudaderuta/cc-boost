@@ -85,8 +85,12 @@ Available Tools:
     ) -> Dict[str, Any]:
         """Build message for boost model with tools embedded in content"""
 
-        # Use custom template if provided, otherwise use default
-        template = self.config.boost_wrapper_template or self._get_default_wrapper_template()
+        # Use custom template if provided and valid, otherwise use default
+        custom_template = getattr(self.config, "boost_wrapper_template", None)
+        if isinstance(custom_template, str) and custom_template.strip():
+            template = custom_template
+        else:
+            template = self._get_default_wrapper_template()
 
         # Format tools as text
         tools_text = self._format_tools_for_message(tools)
@@ -163,59 +167,17 @@ Available Tools:
         message = self.build_boost_message(user_request, tools, loop_count, previous_attempts)
         response = await self.call_boost_model(message)
 
-        # Parse the response
-        response_type = "OTHER"
-        analysis = ""
-        guidance = ""
+        summary = self._extract_section(response, "SUMMARY:")
+        analysis = self._extract_section(response, "ANALYSIS:")
+        guidance = self._extract_section(response, "GUIDANCE:")
 
-        lines = response.split('\n')
-        current_section = None
-        section_content = []
-
-        for line in lines:
-            line = line.strip()
-
-            # Check for section headers
-            if line.startswith("SUMMARY:"):
-                response_type = "SUMMARY"
-                current_section = "final"
-                section_content = [line[8:].strip()]  # Content after "SUMMARY:"
-                continue
-            elif line.startswith("ANALYSIS:"):
-                current_section = "analysis"
-                section_content = [line[9:].strip()]  # Content after "ANALYSIS:"
-                continue
-            elif line.startswith("GUIDANCE:"):
-                current_section = "guidance"
-                section_content = [line[9:].strip()]  # Content after "GUIDANCE:"
-                continue
-            elif line.startswith("---"):
-                # End of structured content
-                break
-
-            # Add content to current section
-            if current_section and line:
-                section_content.append(line)
-
-        # Extract section contents
-        if response_type == "SUMMARY":
-            guidance = '\n'.join(section_content)
-        else:
-            # For non-SUMMARY responses, check if we have ANALYSIS/GUIDANCE
-            # Re-parse to extract these sections properly
-            analysis_match = self._extract_section(response, "ANALYSIS:")
-            guidance_match = self._extract_section(response, "GUIDANCE:")
-
-            if guidance_match:
-                response_type = "GUIDANCE"
-                guidance = guidance_match
-                analysis = analysis_match or ""
-            elif analysis_match and not guidance_match:
-                # Has analysis but no guidance - treat as OTHER
-                response_type = "OTHER"
-                analysis = analysis_match
-
-        return response_type, analysis, guidance
+        if summary:
+            return "SUMMARY", analysis or "", summary
+        if guidance:
+            return "GUIDANCE", analysis or "", guidance
+        if analysis:
+            return "OTHER", analysis, ""
+        return "OTHER", "", ""
 
     def _extract_section(self, text: str, section_name: str) -> Optional[str]:
         """Extract a section from the boost model response"""
@@ -224,16 +186,24 @@ Available Tools:
         section_lines = []
 
         for line in lines:
-            if line.strip().startswith(section_name):
+            stripped = line.strip()
+
+            if stripped.startswith(section_name):
                 in_section = True
                 # Get content after the section header
-                content = line.strip()[len(section_name):].strip()
+                content = stripped[len(section_name):].strip()
                 if content:
                     section_lines.append(content)
             elif in_section:
-                if line.strip().startswith("---") or line.strip().startswith(("SUMMARY:", "ANALYSIS:", "GUIDANCE:")):
+                if stripped.startswith("---") or stripped.startswith(("SUMMARY:", "ANALYSIS:", "GUIDANCE:")):
                     break
-                section_lines.append(line)
+                section_lines.append(line.rstrip())
+
+        # Trim leading/trailing empty lines while preserving intentional spacing within the section
+        while section_lines and section_lines[0] == "":
+            section_lines.pop(0)
+        while section_lines and section_lines[-1] == "":
+            section_lines.pop()
 
         return '\n'.join(section_lines) if section_lines else None
 

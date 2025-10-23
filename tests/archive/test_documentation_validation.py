@@ -5,13 +5,15 @@ import os
 import re
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 
 class TestDocumentationValidation:
     """Test that documentation is complete and accurate."""
 
     def test_readme_exists(self):
         """Test that README.md exists and contains boost features."""
-        readme_path = Path(__file__).parent.parent / "README.md"
+        readme_path = PROJECT_ROOT / "README.md"
         assert readme_path.exists(), "README.md should exist"
 
         content = readme_path.read_text()
@@ -32,7 +34,7 @@ class TestDocumentationValidation:
 
     def test_env_example_exists(self):
         """Test that .env.example exists and contains boost configuration."""
-        env_example_path = Path(__file__).parent.parent / ".env.example"
+        env_example_path = PROJECT_ROOT / ".env.example"
         if env_example_path.exists():
             content = env_example_path.read_text()
 
@@ -55,7 +57,7 @@ class TestDocumentationValidation:
 
     def test_boost_design_documentation(self):
         """Test that boost design documentation is complete."""
-        design_path = Path(__file__).parent.parent / "openspec" / "changes" / "boost-direct-tool-calling" / "design" / "design.md"
+        design_path = PROJECT_ROOT / "openspec" / "changes" / "boost-direct-tool-calling" / "design" / "design.md"
         assert design_path.exists(), "Boost design document should exist"
 
         content = design_path.read_text()
@@ -78,7 +80,7 @@ class TestDocumentationValidation:
 
     def test_boost_proposal_documentation(self):
         """Test that boost proposal documentation is complete."""
-        proposal_path = Path(__file__).parent.parent / "openspec" / "changes" / "boost-direct-tool-calling" / "proposal.md"
+        proposal_path = PROJECT_ROOT / "openspec" / "changes" / "boost-direct-tool-calling" / "proposal.md"
         assert proposal_path.exists(), "Boost proposal document should exist"
 
         content = proposal_path.read_text()
@@ -99,28 +101,28 @@ class TestDocumentationValidation:
 
     def test_boost_specs_documentation(self):
         """Test that boost specification documents are complete."""
-        specs_dir = Path(__file__).parent.parent / "openspec" / "changes" / "boost-direct-tool-calling" / "specs"
+        specs_dir = PROJECT_ROOT / "openspec" / "changes" / "boost-direct-tool-calling" / "specs"
         assert specs_dir.exists(), "Boost specs directory should exist"
 
-        spec_files = list(specs_dir.glob("*.md"))
+        spec_files = list(specs_dir.rglob("spec.md"))
         assert len(spec_files) > 0, "Should have at least one specification document"
 
-        required_specs = [
-            "boost-model-integration",
-            "configuration-management"
-        ]
+        required_specs = {
+            "boost-model-integration": False,
+            "configuration-management": False
+        }
 
-        found_specs = []
         for spec_file in spec_files:
-            spec_name = spec_file.stem
-            found_specs.append(spec_name)
+            parent_name = spec_file.parent.name
+            if parent_name in required_specs:
+                required_specs[parent_name] = True
 
-        for req_spec in required_specs:
-            assert req_spec in found_specs, f"Should have {req_spec} specification"
+        for spec_name, found in required_specs.items():
+            assert found, f"Should have {spec_name} specification"
 
     def test_boost_tasks_documentation(self):
         """Test that boost tasks documentation is complete."""
-        tasks_path = Path(__file__).parent.parent / "openspec" / "changes" / "boost-direct-tool-calling" / "tasks.md"
+        tasks_path = PROJECT_ROOT / "openspec" / "changes" / "boost-direct-tool-calling" / "tasks.md"
         assert tasks_path.exists(), "Boost tasks document should exist"
 
         content = tasks_path.read_text()
@@ -142,7 +144,7 @@ class TestDocumentationValidation:
 
     def test_boost_wrapper_format_examples(self):
         """Test that wrapper format examples are documented."""
-        design_path = Path(__file__).parent.parent / "openspec" / "changes" / "boost-direct-tool-calling" / "design" / "design.md"
+        design_path = PROJECT_ROOT / "openspec" / "changes" / "boost-direct-tool-calling" / "design" / "design.md"
         content = design_path.read_text()
 
         # Check for wrapper format examples
@@ -155,7 +157,7 @@ class TestDocumentationValidation:
 
     def test_boost_loop_mechanism_documentation(self):
         """Test that loop mechanism is properly documented."""
-        design_path = Path(__file__).parent.parent / "openspec" / "changes" / "boost-direct-tool-calling" / "design" / "design.md"
+        design_path = PROJECT_ROOT / "openspec" / "changes" / "boost-direct-tool-calling" / "design" / "design.md"
         content = design_path.read_text()
 
         # Check for loop mechanism details
@@ -174,7 +176,7 @@ class TestDocumentationValidation:
 
     def test_boost_configuration_documentation(self):
         """Test that boost configuration is properly documented."""
-        design_path = Path(__file__).parent.parent / "openspec" / "changes" / "boost-direct-tool-calling" / "design" / "design.md"
+        design_path = PROJECT_ROOT / "openspec" / "changes" / "boost-direct-tool-calling" / "design" / "design.md"
         content = design_path.read_text()
 
         # Check for configuration documentation
@@ -191,7 +193,7 @@ class TestDocumentationValidation:
 
     def test_boost_fallback_logic_documentation(self):
         """Test that fallback logic is documented."""
-        design_path = Path(__file__).parent.parent / "openspec" / "changes" / "boost-direct-tool-calling" / "design" / "design.md"
+        design_path = PROJECT_ROOT / "openspec" / "changes" / "boost-direct-tool-calling" / "design" / "design.md"
         content = design_path.read_text()
 
         # Check for fallback logic documentation
@@ -207,7 +209,7 @@ class TestDocumentationValidation:
 
     def test_boost_performance_documentation(self):
         """Test that performance characteristics are documented."""
-        design_path = Path(__file__).parent.parent / "openspec" / "changes" / "boost-direct-tool-calling" / "design" / "design.md"
+        design_path = PROJECT_ROOT / "openspec" / "changes" / "boost-direct-tool-calling" / "design" / "design.md"
         content = design_path.read_text()
 
         # Check for performance documentation
@@ -224,7 +226,7 @@ class TestDocumentationValidation:
 
     def test_boost_tool_usage_detection_documentation(self):
         """Test that tool usage detection is documented."""
-        design_path = Path(__file__).parent.parent / "openspec" / "changes" / "boost-direct-tool-calling" / "design" / "design.md"
+        design_path = PROJECT_ROOT / "openspec" / "changes" / "boost-direct-tool-calling" / "design" / "design.md"
         content = design_path.read_text()
 
         # Check for tool usage detection documentation
@@ -240,7 +242,7 @@ class TestDocumentationValidation:
 
     def test_boost_integration_tests_documentation(self):
         """Test that integration tests are documented."""
-        design_path = Path(__file__).parent.parent / "openspec" / "changes" / "boost-direct-tool-calling" / "design" / "design.md"
+        design_path = PROJECT_ROOT / "openspec" / "changes" / "boost-direct-tool-calling" / "design" / "design.md"
         content = design_path.read_text()
 
         # Check for integration test documentation
@@ -261,7 +263,7 @@ class TestDocumentationValidation:
 
     def test_boost_flow_diagram_documentation(self):
         """Test that flow diagram is documented."""
-        proposal_path = Path(__file__).parent.parent / "openspec" / "changes" / "boost-direct-tool-calling" / "proposal.md"
+        proposal_path = PROJECT_ROOT / "openspec" / "changes" / "boost-direct-tool-calling" / "proposal.md"
         content = proposal_path.read_text()
 
         # Check for flow diagram
@@ -273,7 +275,7 @@ class TestDocumentationValidation:
 
     def test_boost_goals_documentation(self):
         """Test that boost goals are clearly documented."""
-        proposal_path = Path(__file__).parent.parent / "openspec" / "changes" / "boost-direct-tool-calling" / "proposal.md"
+        proposal_path = PROJECT_ROOT / "openspec" / "changes" / "boost-direct-tool-calling" / "proposal.md"
         content = proposal_path.read_text()
 
         # Check for goals
@@ -285,7 +287,7 @@ class TestDocumentationValidation:
 
     def test_boost_wrapper_template_configuration(self):
         """Test that BOOST_WRAPPER_TEMPLATE configuration is documented."""
-        design_path = Path(__file__).parent.parent / "openspec" / "changes" / "boost-direct-tool-calling" / "design" / "design.md"
+        design_path = PROJECT_ROOT / "openspec" / "changes" / "boost-direct-tool-calling" / "design" / "design.md"
         content = design_path.read_text()
 
         # Check for wrapper template configuration
@@ -295,9 +297,9 @@ class TestDocumentationValidation:
 
     def test_documentation_consistency(self):
         """Test that documentation is consistent across files."""
-        proposal_path = Path(__file__).parent.parent / "openspec" / "changes" / "boost-direct-tool-calling" / "proposal.md"
-        design_path = Path(__file__).parent.parent / "openspec" / "changes" / "boost-direct-tool-calling" / "design" / "design.md"
-        tasks_path = Path(__file__).parent.parent / "openspec" / "changes" / "boost-direct-tool-calling" / "tasks.md"
+        proposal_path = PROJECT_ROOT / "openspec" / "changes" / "boost-direct-tool-calling" / "proposal.md"
+        design_path = PROJECT_ROOT / "openspec" / "changes" / "boost-direct-tool-calling" / "design" / "design.md"
+        tasks_path = PROJECT_ROOT / "openspec" / "changes" / "boost-direct-tool-calling" / "tasks.md"
 
         proposal_content = proposal_path.read_text()
         design_content = design_path.read_text()
@@ -329,7 +331,7 @@ class TestDocumentationValidation:
 
     def test_documentation_examples(self):
         """Test that documentation includes practical examples."""
-        design_path = Path(__file__).parent.parent / "openspec" / "changes" / "boost-direct-tool-calling" / "design" / "design.md"
+        design_path = PROJECT_ROOT / "openspec" / "changes" / "boost-direct-tool-calling" / "design" / "design.md"
         content = design_path.read_text()
 
         # Check for practical examples

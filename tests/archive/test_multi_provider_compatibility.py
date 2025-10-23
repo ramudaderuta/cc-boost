@@ -12,8 +12,7 @@ from src.models.claude import ClaudeMessagesRequest
 class TestMultiProviderCompatibility:
     """Test compatibility with different model providers."""
 
-    @pytest.fixture
-    def sample_tools(self):
+    def _sample_tools(self):
         """Sample tools for testing."""
         return [
             {
@@ -76,7 +75,7 @@ class TestMultiProviderCompatibility:
 
         # Test message building
         message = manager.build_boost_message(
-            "Test request", self.sample_tools(), loop_count=1
+            "Test request", self._sample_tools(), loop_count=1
         )
 
         assert message["model"] == "gpt-4o"
@@ -95,7 +94,7 @@ class TestMultiProviderCompatibility:
 
         # Test message building
         message = manager.build_boost_message(
-            "Test request", self.sample_tools(), loop_count=0
+            "Test request", self._sample_tools(), loop_count=0
         )
 
         assert message["model"] == "claude-3-5-sonnet-20241022"
@@ -113,7 +112,7 @@ class TestMultiProviderCompatibility:
 
         # Test message building
         message = manager.build_boost_message(
-            "Test request", self.sample_tools(), loop_count=2
+            "Test request", self._sample_tools(), loop_count=2
         )
 
         assert message["model"] == "gpt-4o"
@@ -132,7 +131,7 @@ class TestMultiProviderCompatibility:
 
         # Test message building
         message = manager.build_boost_message(
-            "Test request", self.sample_tools(), loop_count=1
+            "Test request", self._sample_tools(), loop_count=1
         )
 
         assert message["model"] == "gemini-1.5-pro"
@@ -150,7 +149,7 @@ class TestMultiProviderCompatibility:
 
         # Test message building
         message = manager.build_boost_message(
-            "Test request", self.sample_tools(), loop_count=0
+            "Test request", self._sample_tools(), loop_count=0
         )
 
         assert message["model"] == "command-r-plus"
@@ -168,7 +167,7 @@ class TestMultiProviderCompatibility:
 
         # Test message building
         message = manager.build_boost_message(
-            "Test request", self.sample_tools(), loop_count=1
+            "Test request", self._sample_tools(), loop_count=1
         )
 
         assert message["model"] == "mistral-large"
@@ -186,7 +185,7 @@ class TestMultiProviderCompatibility:
 
         # Test message building
         message = manager.build_boost_message(
-            "Test request", self.sample_tools(), loop_count=0
+            "Test request", self._sample_tools(), loop_count=0
         )
 
         assert message["model"] == "llama-3.1-sonar-large-128k-online"
@@ -204,7 +203,7 @@ class TestMultiProviderCompatibility:
 
         # Test message building
         message = manager.build_boost_message(
-            "Test request", self.sample_tools(), loop_count=1
+            "Test request", self._sample_tools(), loop_count=1
         )
 
         assert message["model"] == "llama-3.1-70b-versatile"
@@ -222,7 +221,7 @@ class TestMultiProviderCompatibility:
 
         # Test message building
         message = manager.build_boost_message(
-            "Test request", self.sample_tools(), loop_count=2
+            "Test request", self._sample_tools(), loop_count=2
         )
 
         assert message["model"] == "meta-llama/Llama-3-70b-chat-hf"
@@ -240,7 +239,7 @@ class TestMultiProviderCompatibility:
 
         # Test message building
         message = manager.build_boost_message(
-            "Test request", self.sample_tools(), loop_count=0
+            "Test request", self._sample_tools(), loop_count=0
         )
 
         assert message["model"] == "accounts/fireworks/models/llama-v3p-70b-instruct"
@@ -258,7 +257,7 @@ class TestMultiProviderCompatibility:
 
         # Test message building
         message = manager.build_boost_message(
-            "Test request", self.sample_tools(), loop_count=1
+            "Test request", self._sample_tools(), loop_count=1
         )
 
         assert message["model"] == "meta-llama/Llama-2-70b-chat-hf"
@@ -276,7 +275,7 @@ class TestMultiProviderCompatibility:
 
         # Test message building
         message = manager.build_boost_message(
-            "Test request", self.sample_tools(), loop_count=2
+            "Test request", self._sample_tools(), loop_count=2
         )
 
         assert message["model"] == "meta/meta-llama-3-70b-instruct"
@@ -294,7 +293,7 @@ class TestMultiProviderCompatibility:
 
         # Test message building
         message = manager.build_boost_message(
-            "Test request", self.sample_tools(), loop_count=0
+            "Test request", self._sample_tools(), loop_count=0
         )
 
         assert message["model"] == "llama3:70b"
@@ -312,7 +311,7 @@ class TestMultiProviderCompatibility:
 
         # Test message building
         message = manager.build_boost_message(
-            "Test request", self.sample_tools(), loop_count=1
+            "Test request", self._sample_tools(), loop_count=1
         )
 
         assert message["model"] == "meta-llama/Meta-Llama-3-70B-Instruct"
@@ -331,7 +330,7 @@ class TestMultiProviderCompatibility:
 
         # Test message building with custom template
         message = manager.build_boost_message(
-            "Test request", self.sample_tools(), loop_count=0
+            "Test request", self._sample_tools(), loop_count=0
         )
 
         assert message["model"] == "custom-model"
@@ -365,7 +364,7 @@ class TestMultiProviderCompatibility:
             model="claude-3-sonnet-20241022",
             max_tokens=1000,
             messages=[{"role": "user", "content": "Test request"}],
-            tools=self.sample_tools()
+            tools=self._sample_tools()
         )
 
         response = await orchestrator.execute_with_boost(claude_request, "test-request-id")
@@ -386,8 +385,10 @@ class TestMultiProviderCompatibility:
 
             manager = BoostModelManager(config)
 
-            # Test that timeout is configured correctly
-            assert manager.client.timeout == timeout
+            # Test that timeout is configured correctly across phases
+            client_timeout = manager.client.timeout
+            assert client_timeout.connect == timeout
+            assert client_timeout.read == timeout
 
     def test_boost_manager_header_compatibility(self):
         """Test BoostManager with different authentication headers."""
@@ -405,7 +406,9 @@ class TestMultiProviderCompatibility:
             "Content-Type": "application/json"
         }
 
-        assert manager.client.headers == expected_headers
+        headers = manager.client.headers
+        for key, value in expected_headers.items():
+            assert headers.get(key) == value
 
     def test_boost_manager_url_compatibility(self):
         """Test BoostManager with different URL formats."""
@@ -426,8 +429,8 @@ class TestMultiProviderCompatibility:
 
             manager = BoostModelManager(config)
 
-            # Test that base URL is set correctly
-            assert manager.client.base_url == url
+            # Test that base URL resolves to the same location (httpx normalizes trailing slash)
+            assert str(manager.client.base_url).rstrip('/') == url.rstrip('/')
 
     def test_boost_manager_model_name_compatibility(self):
         """Test BoostManager with different model naming conventions."""
@@ -454,7 +457,7 @@ class TestMultiProviderCompatibility:
 
             # Test message building with different model names
             message = manager.build_boost_message(
-                "Test request", self.sample_tools(), loop_count=0
+                "Test request", self._sample_tools(), loop_count=0
             )
 
             assert message["model"] == model
@@ -555,7 +558,7 @@ class TestMultiProviderCompatibility:
         # Test different loop counts
         for loop_count in [0, 1, 2, 3]:
             message = manager.build_boost_message(
-                "Test request", self.sample_tools(), loop_count=loop_count
+                "Test request", self._sample_tools(), loop_count=loop_count
             )
 
             content = message["messages"][0]["content"]
@@ -564,7 +567,7 @@ class TestMultiProviderCompatibility:
         # Test with previous attempts
         previous_attempts = ["First attempt failed", "Second attempt failed"]
         message = manager.build_boost_message(
-            "Test request", self.sample_tools(), loop_count=1, previous_attempts=previous_attempts
+            "Test request", self._sample_tools(), loop_count=1, previous_attempts=previous_attempts
         )
 
         content = message["messages"][0]["content"]

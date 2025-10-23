@@ -150,6 +150,8 @@ class TestRequestRouting:
         """Test boost mode detection when model tier doesn't match."""
         config = MagicMock()
         config.enable_boost_support = "SMALL_MODEL"  # Only small model
+        # Configure the mock to return False for MIDDLE_MODEL
+        config.is_boost_enabled_for_model.return_value = False
 
         request = MagicMock()
         request.model = "claude-3-sonnet-20241022"  # Middle model

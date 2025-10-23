@@ -448,7 +448,7 @@ SUMMARY:
         assert memory_increase < max_memory_increase, f"Memory increase {memory_increase} bytes exceeds limit {max_memory_increase} bytes"
 
     @pytest.mark.asyncio
-    async def test_concurrent_boost_execution_performance(self, mock_config, mock_openai_client):
+    async def test_concurrent_boost_execution_performance(self, mock_config, mock_openai_client, sample_tools):
         """Test performance of concurrent boost executions."""
         orchestrator = BoostOrchestrator(mock_config, mock_openai_client)
 
@@ -465,7 +465,7 @@ SUMMARY:
                 model="claude-3-sonnet-20241022",
                 max_tokens=1000,
                 messages=[{"role": "user", "content": f"Concurrent request {i}"}],
-                tools=self.sample_tools
+                tools=sample_tools
             )
             requests.append(request)
 

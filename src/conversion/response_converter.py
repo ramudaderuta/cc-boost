@@ -2,12 +2,12 @@ import json
 import uuid
 from fastapi import HTTPException, Request
 from src.core.constants import Constants
-from src.models.claude import ClaudeMessagesRequest
+from src.models.claude import ClaudeMessagesRequest, ClaudeMessageResponse
 
 
 def convert_openai_to_claude_response(
     openai_response: dict, original_request: ClaudeMessagesRequest
-) -> dict:
+) -> ClaudeMessageResponse:
     """Convert OpenAI response to Claude format."""
 
     # Extract response data
@@ -75,7 +75,7 @@ def convert_openai_to_claude_response(
         },
     }
 
-    return claude_response
+    return ClaudeMessageResponse.model_validate(claude_response)
 
 
 async def convert_openai_streaming_to_claude(

@@ -374,7 +374,7 @@ class TestResponseProcessing:
         }
         boost_orchestrator.openai_client.create_chat_completion = AsyncMock(return_value=mock_openai_response)
 
-        with patch('src.conversion.response_converter.convert_openai_to_claude_response') as mock_convert:
+        with patch('src.core.boost_orchestrator.convert_openai_to_claude_response') as mock_convert:
             mock_convert.return_value = MagicMock()
 
             response = await boost_orchestrator._handle_non_streaming_auxiliary(
@@ -383,6 +383,7 @@ class TestResponseProcessing:
 
             # Should convert and return response
             mock_convert.assert_called_once_with(mock_openai_response, sample_claude_request)
+            assert response == mock_convert.return_value
 
     @pytest.mark.asyncio
     async def test_handle_non_streaming_auxiliary_without_tools(self, boost_orchestrator, sample_claude_request):
@@ -437,8 +438,11 @@ class TestResponseProcessing:
 
         boost_orchestrator.boost_manager.close = AsyncMock()
 
-        with pytest.raises(Exception):
-            await boost_orchestrator.execute_with_boost(sample_claude_request, "test-request-id")
+        response = await boost_orchestrator.execute_with_boost(sample_claude_request, "test-request-id")
+
+        # Should return error response after retries and ensure cleanup
+        assert "Error:" in response.content[0].text
+        boost_orchestrator.boost_manager.close.assert_awaited_once()
 
         # Should still close boost manager
         boost_orchestrator.boost_manager.close.assert_called_once()

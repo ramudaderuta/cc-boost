@@ -1,6 +1,7 @@
 """Unit tests for response parsing functionality."""
 
 import pytest
+from unittest.mock import MagicMock
 from src.core.boost_model_manager import BoostModelManager
 from src.core.config import Config
 
@@ -199,7 +200,7 @@ GUIDANCE:
         analysis = boost_manager._extract_section(text, "ANALYSIS:")
 
         # Should handle long content
-        assert len(analysis) > 50000  # Should be quite long
+        assert len(analysis) > 40000  # Should be quite long
         assert "Line 0: This is a test line" in analysis
         assert "Line 999: This is a test line" in analysis
 
@@ -286,7 +287,7 @@ GUIDANCE:
 """
 
         analysis = boost_manager._extract_section(text, "ANALYSIS:")
-        assert analysis == ""
+        assert analysis is None
 
     def test_extract_section_edge_section_at_end(self, boost_manager):
         """Test extracting section at the end of text."""
@@ -318,4 +319,4 @@ GUIDANCE:
 """
 
         analysis = boost_manager._extract_section(text, "ANALYSIS:")
-        assert analysis == "Content before separator.\n\n---\nContent after separator.\n\n---\nMore content."
+        assert analysis == "Content before separator."

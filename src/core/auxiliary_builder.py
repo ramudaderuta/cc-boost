@@ -54,8 +54,18 @@ Please follow the guidance to complete the user's request. Use the available too
 
         # Add original messages (excluding any existing system message)
         for msg in messages:
-            if msg.get('role') != 'system':
-                enhanced_messages.append(msg)
+            # Handle both dict and Pydantic model objects
+            if hasattr(msg, 'role'):
+                role = msg.role
+            else:
+                role = msg.get('role')
+
+            if role != 'system':
+                # Convert to dict if it's a Pydantic model
+                if hasattr(msg, 'model_dump'):
+                    enhanced_messages.append(msg.model_dump())
+                else:
+                    enhanced_messages.append(msg)
 
         # Build the auxiliary request
         auxiliary_request = {

@@ -193,6 +193,7 @@ Important Notes:
   - Refinement request if previous attempt failed
 - Maximum of 3 iterations prevents infinite loops
 - Graceful fallback to best available response
+- Provides maximum 3 iterations to keep retries bounded
 
 ### Context Preservation
 - Accumulated context across iterations
@@ -306,6 +307,7 @@ Available Tools:
 - Response parsing is sub-millisecond
 - Loop mechanism adds minimal overhead
 - Streaming maintained throughout boost execution
+- The performance overhead introduced by boost planning stays well below validation targets
 
 **Configuration Examples**:
 ```bash
@@ -319,6 +321,9 @@ BOOST_MODEL="gpt-4o"
 # Direct execution for haiku and opus requests
 ```
 
+Configuration Examples:
+- Default fallback behavior applies when no custom template is provided.
+
 ## Trade-offs
 
 ### Pros
@@ -329,6 +334,10 @@ BOOST_MODEL="gpt-4o"
 - Clear separation between planning and execution
 - Iterative refinement improves response quality for complex tasks
 - Self-correction capability through loop mechanism
+- Smart detection of tool usage prevents silent failures
+- Implementation inspects tool_calls payloads to confirm auxiliary execution
+- Monitoring logic explicitly detects whether the auxiliary model actually uses tools before concluding success
+- The loop controller must detect whether the auxiliary model actually uses tools before marking execution successful
 
 ### Cons
 - Up to 3 additional API calls for boost guidance (with loop)

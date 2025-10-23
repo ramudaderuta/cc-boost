@@ -202,7 +202,7 @@ class TestLoggingMonitoring:
 
         boost_orchestrator.boost_manager.get_boost_guidance = mock_get_guidance
 
-        with caplog.at_level(logging.WARNING):
+        with caplog.at_level(logging.INFO):
             response = await boost_orchestrator.execute_with_boost(sample_claude_request, "test-request-id")
 
             # Check that loop retry was logged
@@ -260,16 +260,23 @@ class TestLoggingMonitoring:
         }
         boost_orchestrator.openai_client.create_chat_completion = AsyncMock(return_value=mock_openai_response)
 
-        # Mock recursive call to return final response
-        with patch.object(boost_orchestrator, 'execute_with_boost') as mock_execute:
-            mock_execute.return_value = MagicMock()
-            mock_execute.return_value.content = [MagicMock(text="Final response")]
+        # Mock boost manager to return SUMMARY on second iteration to end the loop
+        call_count = 0
+        async def mock_get_guidance(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return ("GUIDANCE", "Analysis", "1. Call test_tool")
+            else:
+                return ("SUMMARY", "", "Final answer")
 
-            with caplog.at_level(logging.WARNING):
-                response = await boost_orchestrator.execute_with_boost(sample_claude_request, "test-request-id")
+        boost_orchestrator.boost_manager.get_boost_guidance = mock_get_guidance
 
-                # Check that no tool usage was logged
-                assert "Auxiliary model did not use tools, triggering loop" in caplog.text
+        with caplog.at_level(logging.WARNING):
+            response = await boost_orchestrator.execute_with_boost(sample_claude_request, "test-request-id")
+
+            # Check that no tool usage was logged
+            assert "Auxiliary model did not use tools, triggering loop" in caplog.text
 
     def test_auxiliary_builder_logging(self, caplog):
         """Test that auxiliary builder operations are logged."""

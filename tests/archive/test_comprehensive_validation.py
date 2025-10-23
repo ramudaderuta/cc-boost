@@ -223,9 +223,8 @@ class TestComprehensiveValidation:
         # Test SUMMARY response
         summary_response = """SUMMARY:
 The capital of France is Paris."""
-        response_type, analysis, guidance = manager._extract_section(summary_response, "SUMMARY:")
-        assert response_type == "SUMMARY"
-        assert guidance == "The capital of France is Paris."
+        summary = manager._extract_section(summary_response, "SUMMARY:")
+        assert summary == "The capital of France is Paris."
 
         # Test GUIDANCE response
         guidance_response = """ANALYSIS:
@@ -233,16 +232,17 @@ The user wants to read a file.
 
 GUIDANCE:
 1. Call read_file with path: '/tmp/test.txt'"""
-        response_type, analysis, guidance = manager._extract_section(guidance_response, "ANALYSIS:")
+        analysis = manager._extract_section(guidance_response, "ANALYSIS:")
         assert analysis == "The user wants to read a file."
-        response_type, analysis, guidance = manager._extract_section(guidance_response, "GUIDANCE:")
+        guidance = manager._extract_section(guidance_response, "GUIDANCE:")
         assert guidance == "1. Call read_file with path: '/tmp/test.txt'"
 
         # Test OTHER response
         other_response = "This is just a regular response without proper formatting."
-        response_type, analysis, guidance = manager.get_boost_guidance(
+        manager.call_boost_model = AsyncMock(return_value=other_response)
+        response_type, analysis, guidance = asyncio.run(manager.get_boost_guidance(
             "Test request", [], loop_count=0, previous_attempts=[]
-        )
+        ))
         assert response_type == "OTHER"
 
     def test_summary_bypasses_auxiliary_model(self, mock_config):
@@ -561,14 +561,17 @@ The data has been processed successfully."""
         assert memory_increase < 100000, f"Memory increase {memory_increase} bytes seems excessive"
 
     @pytest.mark.asyncio
-    async def test_concurrent_execution_validation(self, mock_config, mock_openai_client):
+    async def test_concurrent_execution_validation(self, mock_config, mock_openai_client, sample_tools):
         """Test concurrent execution validation."""
         orchestrator = BoostOrchestrator(mock_config, mock_openai_client)
 
         # Mock boost manager to return SUMMARY
-        orchestrator.boost_manager.get_boost_guidance = AsyncMock(
-            return_value=("SUMMARY", "", "Concurrent response")
-        )
+        async def fake_get_guidance(*, user_request, tools, loop_count=0, previous_attempts=None):
+            suffix = user_request.split("Concurrent request")[-1].strip()
+            suffix = suffix or "0"
+            return ("SUMMARY", "", f"Concurrent response {suffix}")
+
+        orchestrator.boost_manager.get_boost_guidance = fake_get_guidance
 
         # Create multiple requests
         requests = []
@@ -577,7 +580,7 @@ The data has been processed successfully."""
                 model="claude-3-sonnet-20241022",
                 max_tokens=1000,
                 messages=[{"role": "user", "content": f"Concurrent request {i}"}],
-                tools=self.sample_tools
+                tools=sample_tools
             )
             requests.append(request)
 
