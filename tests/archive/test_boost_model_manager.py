@@ -31,8 +31,8 @@ class TestBoostModelManager:
         """Test BoostModelManager initialization."""
         manager = BoostModelManager(mock_config)
         assert manager.config == mock_config
+        assert manager.client is not None
         assert str(manager.client.base_url).rstrip('/') == mock_config.boost_base_url.rstrip('/')
-        # Check that timeout is set (httpx Timeout object)
         assert manager.client.timeout is not None
 
     def test_get_default_wrapper_template(self, boost_manager):
@@ -190,6 +190,7 @@ class TestBoostModelManager:
         assert "Current ReAct Loop: 2" in content
         assert "- First attempt failed" in content
         assert "- Second attempt failed" in content
+        assert boost_manager.config.boost_api_key not in content
 
     @pytest.mark.asyncio
     async def test_call_boost_model_success(self, boost_manager):
@@ -205,18 +206,22 @@ class TestBoostModelManager:
             }]
         }
 
-        boost_manager.client.post = AsyncMock(return_value=mock_response)
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        boost_manager._get_or_create_client = AsyncMock(return_value=mock_client)
 
         message = {"model": "gpt-4o", "messages": [{"role": "user", "content": "test"}]}
         result = await boost_manager.call_boost_model(message)
 
         assert result == "Test response content"
-        boost_manager.client.post.assert_called_once_with("/chat/completions", json=message)
+        mock_client.post.assert_awaited_once_with("/chat/completions", json=message)
 
     @pytest.mark.asyncio
     async def test_call_boost_model_http_error(self, boost_manager):
         """Test boost model call with HTTP error."""
-        boost_manager.client.post = AsyncMock(side_effect=httpx.HTTPError("API Error"))
+        mock_client = AsyncMock()
+        mock_client.post.side_effect = httpx.HTTPError("API Error")
+        boost_manager._get_or_create_client = AsyncMock(return_value=mock_client)
 
         message = {"model": "gpt-4o", "messages": [{"role": "user", "content": "test"}]}
 
@@ -232,7 +237,9 @@ class TestBoostModelManager:
             "invalid": "response format"  # Missing choices structure
         }
 
-        boost_manager.client.post = AsyncMock(return_value=mock_response)
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        boost_manager._get_or_create_client = AsyncMock(return_value=mock_client)
 
         message = {"model": "gpt-4o", "messages": [{"role": "user", "content": "test"}]}
 
@@ -323,7 +330,9 @@ Some guidance
             }]
         }
 
-        boost_manager.client.post = AsyncMock(return_value=mock_response)
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        boost_manager._get_or_create_client = AsyncMock(return_value=mock_client)
 
         response_type, analysis, guidance = await boost_manager.get_boost_guidance(
             "What is the capital of France?", []
@@ -351,7 +360,9 @@ GUIDANCE:
             }]
         }
 
-        boost_manager.client.post = AsyncMock(return_value=mock_response)
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        boost_manager._get_or_create_client = AsyncMock(return_value=mock_client)
 
         response_type, analysis, guidance = await boost_manager.get_boost_guidance(
             "Read and analyze /tmp/test.txt", []
@@ -374,7 +385,9 @@ GUIDANCE:
             }]
         }
 
-        boost_manager.client.post = AsyncMock(return_value=mock_response)
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        boost_manager._get_or_create_client = AsyncMock(return_value=mock_client)
 
         response_type, analysis, guidance = await boost_manager.get_boost_guidance(
             "Test request", []
@@ -397,7 +410,9 @@ GUIDANCE:
             }]
         }
 
-        boost_manager.client.post = AsyncMock(return_value=mock_response)
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        boost_manager._get_or_create_client = AsyncMock(return_value=mock_client)
 
         response_type, analysis, guidance = await boost_manager.get_boost_guidance(
             "Simple question", []
@@ -408,8 +423,42 @@ GUIDANCE:
         assert guidance == ""
 
     @pytest.mark.asyncio
-    async def test_close(self, boost_manager):
-        """Test closing the HTTP client."""
-        boost_manager.client.aclose = AsyncMock()
-        await boost_manager.close()
-        boost_manager.client.aclose.assert_called_once()
+    @pytest.mark.asyncio
+    async def test_close_pools(self, boost_manager):
+        """Closing pools should not raise and should close pooled clients."""
+        mock_client = AsyncMock()
+        mock_client.aclose = AsyncMock()
+        pool_key = f"{boost_manager.config.boost_base_url}|{boost_manager.config.boost_model}"
+        BoostModelManager._client_pool[pool_key] = mock_client
+        await BoostModelManager.close_pools()
+
+        assert pool_key not in BoostModelManager._client_pool
+
+    @pytest.mark.asyncio
+    async def test_get_boost_guidance_uses_cache(self, boost_manager):
+        """Repeated requests with identical context should use cached response."""
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {
+            "choices": [{
+                "message": {
+                    "content": "SUMMARY:\nCached result"
+                }
+            }]
+        }
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        boost_manager._get_or_create_client = AsyncMock(return_value=mock_client)
+
+        boost_manager._response_cache.clear()
+
+        result_first = await boost_manager.get_boost_guidance("Cache me", [])
+        mock_client.post.assert_awaited_once()
+
+        mock_client.post.reset_mock()
+
+        result_second = await boost_manager.get_boost_guidance("Cache me", [])
+
+        mock_client.post.assert_not_called()
+        assert result_first == result_second

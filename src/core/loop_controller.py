@@ -1,5 +1,5 @@
-from typing import List, Optional, Dict, Any
-from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Set
+from dataclasses import dataclass, field
 
 @dataclass
 class LoopState:
@@ -9,6 +9,8 @@ class LoopState:
     previous_attempts: List[str] = None
     current_guidance: str = ""
     current_analysis: str = ""
+    guidance_history: Set[str] = field(default_factory=set)
+    analysis_history: Set[str] = field(default_factory=set)
 
     def __post_init__(self):
         if self.previous_attempts is None:
@@ -35,3 +37,41 @@ class LoopState:
             "guidance": self.current_guidance,
             "analysis": self.current_analysis
         }
+
+    def register_guidance(self, guidance: str) -> bool:
+        """
+        Track guidance values to detect duplicates.
+        Returns True if the guidance is new, False if it has been seen.
+        """
+        normalized = (guidance or "").strip()
+        self.current_guidance = normalized
+        if not normalized:
+            return False
+        if normalized in self.guidance_history:
+            return False
+        self.guidance_history.add(normalized)
+        return True
+
+    def register_analysis(self, analysis: str) -> bool:
+        """
+        Track analysis values to detect duplicates.
+        Returns True if the analysis is new, False if it has been seen.
+        """
+        normalized = (analysis or "").strip()
+        self.current_analysis = normalized
+        if not normalized:
+            return False
+        if normalized in self.analysis_history:
+            return False
+        self.analysis_history.add(normalized)
+        return True
+
+    def has_seen_guidance(self, guidance: str) -> bool:
+        """Check if guidance content has already been processed."""
+        normalized = (guidance or "").strip()
+        return bool(normalized) and normalized in self.guidance_history
+
+    def has_seen_analysis(self, analysis: str) -> bool:
+        """Check if analysis content has already been processed."""
+        normalized = (analysis or "").strip()
+        return bool(normalized) and normalized in self.analysis_history

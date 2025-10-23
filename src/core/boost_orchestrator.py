@@ -1,4 +1,3 @@
-import asyncio
 from typing import Any, Dict, List, Optional, Tuple
 from src.core.boost_model_manager import BoostModelManager
 from src.core.loop_controller import LoopState
@@ -49,75 +48,96 @@ class BoostOrchestrator:
         # Extract user request from messages
         user_request = self._extract_user_request(claude_request.messages)
 
-        try:
-            while loop_state.can_continue():
-                logger.info(f"Boost loop iteration: {loop_state.loop_count}")
+        while loop_state.can_continue():
+            logger.info(f"Boost loop iteration: {loop_state.loop_count}")
 
-                # Get guidance from boost model
-                try:
-                    response_type, analysis, guidance = await self.boost_manager.get_boost_guidance(
-                        user_request=user_request,
-                        tools=tools,
-                        loop_count=loop_state.loop_count,
-                        previous_attempts=loop_state.previous_attempts
-                    )
-                except Exception as e:
-                    logger.error(f"Boost model call failed: {e}")
-                    loop_state.add_attempt(f"Boost model error: {str(e)}")
-                    if not loop_state.increment_loop():
-                        return self._create_error_response("Maximum retry attempts reached", claude_request)
+            # Get guidance from boost model
+            try:
+                response_type, analysis, guidance = await self.boost_manager.get_boost_guidance(
+                    user_request=user_request,
+                    tools=tools,
+                    loop_count=loop_state.loop_count,
+                    previous_attempts=loop_state.previous_attempts,
+                )
+            except Exception as exc:
+                logger.error(f"Boost model call failed: {exc}")
+                loop_state.add_attempt(f"Boost model error: {str(exc)}")
+                if loop_state.increment_loop():
                     continue
+                logger.warning(f"Max loops ({loop_state.max_loops}) reached")
+                return self._create_error_response("Maximum retry attempts reached", claude_request)
 
-                logger.info(f"Boost model response type: {response_type}")
+            logger.info(f"Boost model response type: {response_type}")
 
-                if response_type == "SUMMARY":
-                    # Boost model provided final answer, no auxiliary needed
-                    logger.info("Boost model provided SUMMARY response")
-                    return self._create_final_claude_response(guidance, claude_request)
+            if response_type == "SUMMARY":
+                logger.info("Boost model provided SUMMARY response")
+                loop_state.register_analysis(analysis)
+                return self._create_final_claude_response(guidance, claude_request)
 
-                elif response_type == "GUIDANCE":
-                    # Build auxiliary request with guidance
-                    auxiliary_request = AuxiliaryModelBuilder.build_auxiliary_request(
+            if response_type == "GUIDANCE":
+                loop_state.register_analysis(analysis)
+                guidance_is_new = loop_state.register_guidance(guidance)
+
+                if not guidance_is_new and loop_state.loop_count > 0:
+                    logger.warning("Boost guidance repeated without progress; exiting loop early.")
+                    return self._create_error_response("Repeated guidance detected without progress", claude_request)
+
+                auxiliary_request = AuxiliaryModelBuilder.build_auxiliary_request(
+                    claude_request,
+                    analysis,
+                    guidance,
+                    tools,
+                )
+
+                try:
+                    if claude_request.stream:
+                        return await self._handle_streaming_auxiliary(
+                            auxiliary_request, claude_request, request_id, loop_state
+                        )
+
+                    tools_used, claude_response, auxiliary_text = await self._handle_non_streaming_auxiliary(
+                        auxiliary_request,
                         claude_request,
-                        analysis,
-                        guidance,
-                        tools
+                        request_id,
+                        loop_state,
                     )
 
-                    # Execute with auxiliary model
-                    try:
-                        if claude_request.stream:
-                            # Handle streaming response
-                            return await self._handle_streaming_auxiliary(
-                                auxiliary_request, claude_request, request_id, loop_state
-                            )
-                        else:
-                            # Handle non-streaming response
-                            return await self._handle_non_streaming_auxiliary(
-                                auxiliary_request, claude_request, request_id, loop_state
-                            )
+                    if tools_used:
+                        return claude_response
 
-                    except Exception as e:
-                        logger.error(f"Auxiliary model execution failed: {e}")
-                        loop_state.add_attempt(f"Auxiliary execution failed: {str(e)}")
-                        if not loop_state.increment_loop():
-                            # This will be the last iteration, let it exit naturally
-                            continue
-
-                else:  # OTHER
-                    # Invalid response format, retry
-                    logger.warning(f"Boost model returned invalid format, retrying...")
-                    loop_state.add_attempt(f"Invalid response format: {analysis[:200]}...")
-                    if not loop_state.increment_loop():
-                        # This will be the last iteration, let it exit naturally
+                    loop_state.add_attempt(
+                        f"Auxiliary model didn't use tools. Response: {auxiliary_text[:200]}..."
+                    )
+                    if loop_state.increment_loop():
                         continue
+                    logger.warning(f"Max loops ({loop_state.max_loops}) reached")
+                    return self._create_error_response(
+                        "Auxiliary model failed to use tools after multiple attempts",
+                        claude_request,
+                    )
 
-            # Max loops reached
+                except Exception as exc:
+                    logger.error(f"Auxiliary model execution failed: {exc}")
+                    loop_state.add_attempt(f"Auxiliary execution failed: {str(exc)}")
+                    if loop_state.increment_loop():
+                        continue
+                    logger.warning(f"Max loops ({loop_state.max_loops}) reached")
+                    return self._create_error_response(
+                        "Auxiliary execution failed after multiple attempts",
+                        claude_request,
+                    )
+
+            # OTHER response or unhandled case
+            logger.warning("Boost model returned invalid format, retrying...")
+            loop_state.register_analysis(analysis)
+            loop_state.add_attempt(f"Invalid response format: {analysis[:200]}...")
+            if loop_state.increment_loop():
+                continue
             logger.warning(f"Max loops ({loop_state.max_loops}) reached")
             return self._create_error_response("Maximum retry attempts reached", claude_request)
 
-        finally:
-            await self.boost_manager.close()
+        logger.warning(f"Max loops ({loop_state.max_loops}) reached")
+        return self._create_error_response("Maximum retry attempts reached", claude_request)
 
     def _extract_user_request(self, messages: List[Any]) -> str:
         """Extract the user's request from message history"""
@@ -151,9 +171,9 @@ class BoostOrchestrator:
         auxiliary_request: Dict[str, Any],
         original_claude_request: Any,
         request_id: str,
-        loop_state: LoopState
-    ) -> Any:
-        """Handle non-streaming auxiliary model execution"""
+        loop_state: LoopState,
+    ) -> Tuple[bool, Optional[Any], str]:
+        """Handle non-streaming auxiliary model execution."""
         openai_response = await self.openai_client.create_chat_completion(
             auxiliary_request, request_id
         )
@@ -161,18 +181,12 @@ class BoostOrchestrator:
         # Check if tools were used
         if AuxiliaryModelBuilder.detect_tool_usage(openai_response):
             logger.info("Auxiliary model used tools successfully")
-            # Convert to Claude format and return
-            return convert_openai_to_claude_response(openai_response, original_claude_request)
-        else:
-            # No tools used, increment loop and retry
-            logger.warning("Auxiliary model did not use tools, triggering loop")
-            content = AuxiliaryModelBuilder.extract_final_response(openai_response)
-            loop_state.add_attempt(f"Auxiliary model didn't use tools. Response: {content[:200]}...")
-            if loop_state.increment_loop():
-                # Recursively retry with boost
-                return await self.execute_with_boost(original_claude_request, request_id)
-            else:
-                return self._create_error_response("Auxiliary model failed to use tools after multiple attempts", original_claude_request)
+            claude_response = convert_openai_to_claude_response(openai_response, original_claude_request)
+            return True, claude_response, ""
+
+        logger.warning("Auxiliary model did not use tools, triggering loop")
+        content = AuxiliaryModelBuilder.extract_final_response(openai_response)
+        return False, None, content or ""
 
     async def _handle_streaming_auxiliary(
         self,

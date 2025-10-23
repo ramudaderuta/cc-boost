@@ -204,7 +204,7 @@ class TestErrorHandling:
         response = await boost_orchestrator.execute_with_boost(sample_claude_request, "test-request-id")
 
         # Should return an error response after exhausting retries
-        assert "Error: Maximum retry attempts reached" in response.content[0].text
+        assert "Error: Repeated guidance detected without progress" in response.content[0].text
 
     @pytest.mark.asyncio
     async def test_boost_orchestrator_consecutive_failures(self, boost_orchestrator, sample_claude_request):
@@ -287,10 +287,10 @@ class TestErrorHandling:
         response = await boost_orchestrator.execute_with_boost(sample_claude_request, "test-request-id")
 
         # Verify error response
-        assert "Error: Maximum retry attempts reached" in response.content[0].text
+        assert response.content[0].text.startswith("Error:")
 
-        # Should still close boost manager
-        boost_orchestrator.boost_manager.close.assert_called_once()
+        # Connection pooling keeps manager open between requests
+        boost_orchestrator.boost_manager.close.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_boost_orchestrator_error_propagation(self, boost_orchestrator, sample_claude_request):

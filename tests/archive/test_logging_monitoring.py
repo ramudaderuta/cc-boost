@@ -405,8 +405,8 @@ class TestLoggingMonitoring:
         with caplog.at_level(logging.INFO):
             response = await boost_orchestrator.execute_with_boost(sample_claude_request, "test-request-id")
 
-            # Check that cleanup was performed (close was called)
-            boost_orchestrator.boost_manager.close.assert_called_once()
+            # Connection pooling keeps manager open; close should not be called per request
+            boost_orchestrator.boost_manager.close.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_error_recovery_logging(self, boost_orchestrator, sample_claude_request, caplog):

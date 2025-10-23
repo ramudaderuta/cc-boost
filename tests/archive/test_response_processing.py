@@ -4,6 +4,7 @@ import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from src.core.boost_orchestrator import BoostOrchestrator
+from src.core.auxiliary_builder import AuxiliaryModelBuilder
 from src.core.config import Config
 from src.models.claude import ClaudeMessagesRequest, ClaudeMessageResponse
 
@@ -377,13 +378,15 @@ class TestResponseProcessing:
         with patch('src.core.boost_orchestrator.convert_openai_to_claude_response') as mock_convert:
             mock_convert.return_value = MagicMock()
 
-            response = await boost_orchestrator._handle_non_streaming_auxiliary(
+            success, response, aux_text = await boost_orchestrator._handle_non_streaming_auxiliary(
                 auxiliary_request, sample_claude_request, "test-id", loop_state
             )
 
             # Should convert and return response
             mock_convert.assert_called_once_with(mock_openai_response, sample_claude_request)
+            assert success is True
             assert response == mock_convert.return_value
+            assert aux_text == ""
 
     @pytest.mark.asyncio
     async def test_handle_non_streaming_auxiliary_without_tools(self, boost_orchestrator, sample_claude_request):
@@ -402,20 +405,19 @@ class TestResponseProcessing:
         }
         boost_orchestrator.openai_client.create_chat_completion = AsyncMock(return_value=mock_openai_response)
 
-        with patch.object(boost_orchestrator, '_create_error_response') as mock_error:
-            mock_error.return_value = MagicMock()
+        success, response, aux_text = await boost_orchestrator._handle_non_streaming_auxiliary(
+            auxiliary_request, sample_claude_request, "test-id", loop_state
+        )
 
-            response = await boost_orchestrator._handle_non_streaming_auxiliary(
-                auxiliary_request, sample_claude_request, "test-id", loop_state
-            )
-
-            # Should return error response
-            mock_error.assert_called_once()
-            loop_state.increment_loop.assert_called_once()
+        # Should indicate failure without closing loop automatically
+        assert success is False
+        assert response is None
+        assert aux_text == "No tools used"
+        loop_state.increment_loop.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_execute_with_boost_cleanup(self, boost_orchestrator, sample_claude_request):
-        """Test that boost manager is cleaned up after execution."""
+    async def test_execute_with_boost_does_not_close_manager(self, boost_orchestrator, sample_claude_request):
+        """Ensure manager stays open to support connection pooling."""
         # Mock boost manager to return SUMMARY
         boost_orchestrator.boost_manager.get_boost_guidance = AsyncMock(
             return_value=("SUMMARY", "", "Final answer")
@@ -425,12 +427,12 @@ class TestResponseProcessing:
 
         await boost_orchestrator.execute_with_boost(sample_claude_request, "test-request-id")
 
-        # Should close boost manager
-        boost_orchestrator.boost_manager.close.assert_called_once()
+        # Manager should remain open for pooling
+        boost_orchestrator.boost_manager.close.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_execute_with_boost_cleanup_on_exception(self, boost_orchestrator, sample_claude_request):
-        """Test that boost manager is cleaned up even when exception occurs."""
+    async def test_execute_with_boost_no_close_on_exception(self, boost_orchestrator, sample_claude_request):
+        """Ensure manager is not closed even when an exception occurs."""
         # Mock boost manager to raise exception
         boost_orchestrator.boost_manager.get_boost_guidance = AsyncMock(
             side_effect=Exception("Boost API Error")
@@ -442,7 +444,26 @@ class TestResponseProcessing:
 
         # Should return error response after retries and ensure cleanup
         assert "Error:" in response.content[0].text
-        boost_orchestrator.boost_manager.close.assert_awaited_once()
+        boost_orchestrator.boost_manager.close.assert_not_called()
 
-        # Should still close boost manager
-        boost_orchestrator.boost_manager.close.assert_called_once()
+    @pytest.mark.asyncio
+    async def test_execute_with_boost_early_exit_on_duplicate_guidance(self, boost_orchestrator, sample_claude_request):
+        """Ensure duplicate guidance triggers early exit instead of looping indefinitely."""
+        boost_orchestrator.boost_manager.get_boost_guidance = AsyncMock(side_effect=[
+            ("GUIDANCE", "Analysis", "1. Use test_tool"),
+            ("GUIDANCE", "Analysis", "1. Use test_tool"),
+        ])
+
+        boost_orchestrator.openai_client.create_chat_completion = AsyncMock(return_value={
+            "choices": [{
+                "message": {
+                    "content": "No tools used"
+                }
+            }]
+        })
+
+        with patch.object(AuxiliaryModelBuilder, "detect_tool_usage", return_value=False), \
+             patch.object(AuxiliaryModelBuilder, "extract_final_response", return_value="No tools used"):
+            response = await boost_orchestrator.execute_with_boost(sample_claude_request, "duplicate-guidance")
+
+        assert "Repeated guidance" in response.content[0].text
