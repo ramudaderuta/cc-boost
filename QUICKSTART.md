@@ -22,6 +22,10 @@ cp .env.example .env
 # OPENAI_API_KEY="sk-your-openai-key"
 # BIG_MODEL="gpt-4o"
 # SMALL_MODEL="gpt-4o-mini"
+# Optional boost planning support
+# ENABLE_BOOST_SUPPORT="MIDDLE_MODEL"
+# BOOST_API_KEY="sk-your-boost-key"
+# BOOST_MODEL="gpt-4o"
 ```
 
 #### Azure OpenAI
@@ -76,7 +80,10 @@ ANTHROPIC_BASE_URL=http://localhost:8082 claude
 ## 🧪 Test Your Setup
 ```bash
 # Quick test
-python src/test_claude_to_openai.py
+uv run pytest tests
+
+# Only archived functional flows
+uv run pytest tests/archive
 ```
 
 That's it! Now Claude Code can use any OpenAI-compatible provider! 🎉

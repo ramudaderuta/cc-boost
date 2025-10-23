@@ -12,6 +12,7 @@ A proxy server that enables **Claude Code** to work with OpenAI-compatible API p
 - **Function Calling**: Complete tool use support with proper conversion
 - **Boost-Directed Tool-Calling**: Enable tool usage with providers that disable the tools parameter
 - **Iterative Refinement**: Up to 3-loop retry mechanism for complex tasks
+- **Boost Caching & Pooling**: Reuses HTTP sessions and caches recent planning responses to cut latency
 - **Streaming Responses**: Real-time SSE streaming support
 - **Image Support**: Base64 encoded image input
 - **Custom Headers**: Automatic injection of custom HTTP headers for API requests
@@ -34,6 +35,7 @@ pip install -r requirements.txt
 ```bash
 cp .env.example .env
 # Edit .env and add your API configuration
+# Optional: Set BOOST_* variables if you want boost-directed tool-calling
 # Note: Environment variables are automatically loaded from .env file
 ```
 
@@ -302,11 +304,13 @@ claude
 
 ## Testing
 
-Test proxy functionality:
+Run the full pytest suite (includes archived functional smoke flows):
 
 ```bash
-# Run comprehensive tests
-python src/test_claude_to_openai.py
+uv run pytest tests
+
+# Or only the archived functional scenarios
+uv run pytest tests/archive
 ```
 
 ## Development
@@ -333,11 +337,14 @@ uv run mypy src/
 ```
 cc-boost/
 ├── src/
-│   ├── main.py                     # Main server
-│   ├── test_claude_to_openai.py    # Tests
+│   ├── main.py                     # Main server entrypoint
+│   ├── core/                       # Boost routing/orchestration logic
 │   └── [other modules...]
 ├── start_proxy.py                  # Startup script
 ├── .env.example                    # Config template
+├── tests/
+│   ├── archive/                    # Completed functional flows
+│   └── conftest.py                 # Shared fixtures/helpers
 └── README.md                       # This file
 ```
 

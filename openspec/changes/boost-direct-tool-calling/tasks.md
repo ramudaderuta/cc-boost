@@ -149,8 +149,5 @@
 
 ## Tests summary
 
-### **Archived** (moved to tests/archive/)
-
-  - test_boost_config.py - All 11 tests passing
-  - test_loop_controller.py - All 22 tests passing (after fixing 1 test)
-  - test_auxiliary_builder.py - All 19 tests passing (after fixing 1 test)
+- `uv run pytest tests` – ✅ full regression suite covering boost orchestration, caching, and loop control
+- `uv run pytest tests/archive` – ✅ archived functional flows (boost_only, main, cancellation) remain green

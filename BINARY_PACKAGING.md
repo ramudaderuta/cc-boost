@@ -127,6 +127,11 @@ export ANTHROPIC_API_KEY="anthropic-key"
 export HOST="0.0.0.0"
 export PORT="8082"
 export LOG_LEVEL="INFO"
+# Boost-directed tool-calling (optional)
+export ENABLE_BOOST_SUPPORT="MIDDLE_MODEL"
+export BOOST_API_KEY="your-boost-api-key"
+export BOOST_BASE_URL="https://api.openai.com/v1"
+export BOOST_MODEL="gpt-4o"
 ```
 
 ### Viewing Help
@@ -143,6 +148,16 @@ OPENAI_API_KEY="your-key" ./cc-boost
 
 # Run in background
 OPENAI_API_KEY="your-key" nohup ./cc-boost &
+```
+
+### Verifying the Build
+
+```bash
+# Run the pytest suite against a live proxy instance
+uv run pytest tests
+
+# Or limit to archived functional scenarios
+uv run pytest tests/archive
 ```
 
 ## Deployment Instructions
